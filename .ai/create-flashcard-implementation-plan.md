@@ -1,0 +1,1019 @@
+# API Endpoint Implementation Plan: Create Manual Flashcard
+
+## 1. Endpoint Overview
+
+**Purpose**: Allow authenticated users to manually create a new flashcard with custom front (question) and back (answer) content.
+
+**Functionality**:
+- Accepts user-provided flashcard data
+- Validates input against database constraints
+- Automatically sets source as 'manual' and generation_id as null
+- Associates flashcard with authenticated user
+- Returns created flashcard with all metadata
+
+**Business Context**: This endpoint supports the PRD requirement (US-007) for manual flashcard creation, enabling users to add their own content that doesn't come from AI generation.
+
+## 2. Request Details
+
+### HTTP Method
+`POST`
+
+### URL Structure
+`/api/flashcards`
+
+### Authentication Required
+Yes - JWT Bearer token in Authorization header
+
+### Headers
+```
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+### Request Parameters
+
+#### Path Parameters
+None
+
+#### Query Parameters
+None
+
+#### Request Body (Required)
+```json
+{
+  "front": "What is the capital of France?",
+  "back": "Paris"
+}
+```
+
+**Field Specifications**:
+- `front` (string, required): Question or front side of flashcard
+  - Minimum length: 1 character
+  - Maximum length: 200 characters
+  - Cannot be empty string or whitespace only
+- `back` (string, required): Answer or back side of flashcard
+  - Minimum length: 1 character
+  - Maximum length: 500 characters
+  - Cannot be empty string or whitespace only
+
+## 3. Types Used
+
+### DTOs
+```typescript
+import {
+  CreateFlashcardCommand,
+  FlashcardDTO,
+  ApiErrorResponse,
+  FlashcardConstraints
+} from '@/types';
+```
+
+### Database Types
+```typescript
+import type { TablesInsert } from '@/db/database.types';
+
+type FlashcardInsert = TablesInsert<'flashcards'>;
+```
+
+### Supabase Client
+```typescript
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@/db/database.types';
+```
+
+## 4. Response Details
+
+### Success Response (201 Created)
+```json
+{
+  "id": 124,
+  "front": "What is the capital of France?",
+  "back": "Paris",
+  "source": "manual",
+  "created_at": "2025-01-27T11:00:00Z",
+  "updated_at": "2025-01-27T11:00:00Z",
+  "generation_id": null,
+  "user_id": "uuid-here"
+}
+```
+
+**Response Type**: `FlashcardDTO`
+
+### Error Responses
+
+#### 400 Bad Request - Validation Error
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Front text exceeds maximum length of 200 characters",
+    "details": {
+      "field": "front",
+      "constraint": "max_length",
+      "max": 200,
+      "actual": 250
+    }
+  }
+}
+```
+
+**Common validation scenarios**:
+- Missing required fields (front or back)
+- Empty strings or whitespace-only values
+- Front text exceeds 200 characters
+- Back text exceeds 500 characters
+- Invalid JSON structure
+
+#### 401 Unauthorized
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Missing or invalid authentication token"
+  }
+}
+```
+
+**Triggers**:
+- No Authorization header provided
+- Invalid JWT token
+- Expired JWT token
+- Token signature verification failed
+
+#### 429 Too Many Requests
+```json
+{
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Rate limit exceeded. Maximum 100 requests per minute allowed"
+  }
+}
+```
+
+**Headers**:
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1706356860
+```
+
+#### 500 Internal Server Error
+```json
+{
+  "error": {
+    "code": "INTERNAL_ERROR",
+    "message": "An unexpected error occurred while creating flashcard"
+  }
+}
+```
+
+## 5. Data Flow
+
+### Flow Diagram
+```
+Client Request
+    ↓
+Authentication Middleware (JWT verification)
+    ↓
+Rate Limiting Middleware (100 req/min check)
+    ↓
+Request Body Validation
+    ↓
+FlashcardService.createManualFlashcard()
+    ↓
+Prepare insert data:
+  - front: from request
+  - back: from request
+  - source: 'manual' (auto-set)
+  - generation_id: null (auto-set)
+  - user_id: from auth context
+    ↓
+Supabase Client.insert() to flashcards table
+    ↓
+RLS Policy Check (user_id = auth.uid())
+    ↓
+Database Insert with auto-generated:
+  - id (BIGSERIAL)
+  - created_at (now())
+  - updated_at (now())
+    ↓
+Return created flashcard
+    ↓
+Response to Client (201 Created)
+```
+
+### Database Interaction
+
+1. **Supabase Client Configuration**:
+   - Use authenticated client with user's JWT
+   - RLS policies automatically filter by user_id
+
+2. **Insert Query**:
+```typescript
+const { data, error } = await supabase
+  .from('flashcards')
+  .insert({
+    front: command.front,
+    back: command.back,
+    source: 'manual',
+    generation_id: null,
+    user_id: userId // from auth context
+  })
+  .select()
+  .single();
+```
+
+3. **RLS Policy Enforcement**:
+   - Database automatically ensures `user_id = auth.uid()`
+   - No additional authorization checks needed in application code
+
+4. **Automatic Triggers**:
+   - `created_at` set by database DEFAULT now()
+   - `updated_at` set by database DEFAULT now()
+   - `id` auto-generated by BIGSERIAL
+
+## 6. Security Considerations
+
+### Authentication
+- **Mechanism**: JWT Bearer token provided by Supabase Auth
+- **Verification**: Middleware extracts and verifies token signature
+- **Token Lifetime**: 3600 seconds (1 hour)
+- **User Context**: Extract user_id from verified JWT payload
+
+### Authorization
+- **Row-Level Security (RLS)**: Enforced at database level
+- **Policy**: User can only insert flashcards with their own user_id
+- **Automatic Enforcement**: Supabase automatically validates RLS policies
+- **No Direct SQL Access**: All queries go through Supabase client with user context
+
+### Input Validation & Sanitization
+
+#### XSS Prevention
+```typescript
+// Sanitize HTML entities in front and back text
+import DOMPurify from 'isomorphic-dompurify';
+
+const sanitizedFront = DOMPurify.sanitize(command.front, {
+  ALLOWED_TAGS: [], // Strip all HTML tags
+  ALLOWED_ATTR: []
+});
+```
+
+#### SQL Injection Prevention
+- Use Supabase client parameterized queries
+- Never concatenate user input into SQL strings
+- Rely on Supabase's built-in query builder
+
+#### Length Validation
+```typescript
+if (command.front.length > FlashcardConstraints.FRONT_MAX_LENGTH) {
+  throw new ValidationError('front', 'max_length', {
+    max: FlashcardConstraints.FRONT_MAX_LENGTH,
+    actual: command.front.length
+  });
+}
+
+if (command.back.length > FlashcardConstraints.BACK_MAX_LENGTH) {
+  throw new ValidationError('back', 'max_length', {
+    max: FlashcardConstraints.BACK_MAX_LENGTH,
+    actual: command.back.length
+  });
+}
+```
+
+#### Content Validation
+```typescript
+// Ensure non-empty after trimming
+if (command.front.trim().length === 0) {
+  throw new ValidationError('front', 'required', {
+    message: 'Front text cannot be empty or whitespace only'
+  });
+}
+
+if (command.back.trim().length === 0) {
+  throw new ValidationError('back', 'required', {
+    message: 'Back text cannot be empty or whitespace only'
+  });
+}
+```
+
+### Rate Limiting
+- **Limit**: 100 requests per minute per user
+- **Implementation**: Use Astro middleware with in-memory store or Redis
+- **Headers**: Include rate limit info in all responses
+- **Scope**: Per user_id (from authenticated token)
+
+### CORS Configuration
+```typescript
+// Astro middleware
+export const onRequest = async ({ request, locals }, next) => {
+  const response = await next();
+
+  // Only allow frontend domain
+  response.headers.set('Access-Control-Allow-Origin', import.meta.env.PUBLIC_FRONTEND_URL);
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+  response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+
+  return response;
+};
+```
+
+## 7. Error Handling
+
+### Error Scenarios
+
+| Scenario | HTTP Status | Error Code | Message |
+|----------|-------------|------------|---------|
+| Missing front field | 400 | VALIDATION_ERROR | Front text is required |
+| Missing back field | 400 | VALIDATION_ERROR | Back text is required |
+| Front too long | 400 | VALIDATION_ERROR | Front text exceeds maximum length of 200 characters |
+| Back too long | 400 | VALIDATION_ERROR | Back text exceeds maximum length of 500 characters |
+| Empty front after trim | 400 | VALIDATION_ERROR | Front text cannot be empty or whitespace only |
+| Empty back after trim | 400 | VALIDATION_ERROR | Back text cannot be empty or whitespace only |
+| Invalid JSON | 400 | VALIDATION_ERROR | Invalid request body format |
+| Missing auth header | 401 | UNAUTHORIZED | Missing authorization header |
+| Invalid JWT token | 401 | UNAUTHORIZED | Invalid or malformed authentication token |
+| Expired JWT token | 401 | UNAUTHORIZED | Authentication token has expired |
+| Rate limit exceeded | 429 | RATE_LIMIT_EXCEEDED | Rate limit exceeded. Maximum 100 requests per minute allowed |
+| Database connection error | 500 | INTERNAL_ERROR | Database connection failed |
+| Unknown database error | 500 | INTERNAL_ERROR | An unexpected error occurred while creating flashcard |
+
+### Error Response Builder
+```typescript
+function buildErrorResponse(
+  code: ApiErrorCode,
+  message: string,
+  details?: Record<string, unknown>
+): ApiErrorResponse {
+  return {
+    error: {
+      code,
+      message,
+      details
+    }
+  };
+}
+```
+
+### Try-Catch Implementation
+```typescript
+try {
+  // Validation
+  validateCreateFlashcardCommand(command);
+
+  // Service call
+  const flashcard = await flashcardService.createManualFlashcard(
+    command,
+    userId
+  );
+
+  return new Response(JSON.stringify(flashcard), {
+    status: 201,
+    headers: { 'Content-Type': 'application/json' }
+  });
+
+} catch (error) {
+  if (error instanceof ValidationError) {
+    return new Response(
+      JSON.stringify(buildErrorResponse(
+        'VALIDATION_ERROR',
+        error.message,
+        error.details
+      )),
+      { status: 400 }
+    );
+  }
+
+  if (error instanceof AuthenticationError) {
+    return new Response(
+      JSON.stringify(buildErrorResponse(
+        'UNAUTHORIZED',
+        error.message
+      )),
+      { status: 401 }
+    );
+  }
+
+  // Log unexpected errors for monitoring
+  console.error('Unexpected error creating flashcard:', error);
+
+  return new Response(
+    JSON.stringify(buildErrorResponse(
+      'INTERNAL_ERROR',
+      'An unexpected error occurred while creating flashcard'
+    )),
+    { status: 500 }
+  );
+}
+```
+
+## 8. Performance Considerations
+
+### Database Performance
+
+#### Indexes Used
+- `user_id` index on flashcards table (for RLS policy check)
+- Primary key index on `id` (auto-created)
+
+#### Query Optimization
+- Use `.select()` after `.insert()` to return created record in single query
+- Use `.single()` to ensure only one record returned (avoids array wrapping)
+
+### Caching Strategy
+- **Not applicable** for POST requests (mutating operation)
+- Invalidate any cached flashcard lists after successful creation
+
+### Payload Size
+- Maximum request body size: ~1 KB (200 + 500 chars + JSON overhead)
+- No need for compression middleware for this endpoint
+- No streaming required
+
+### Connection Pooling
+- Supabase client handles connection pooling automatically
+- Use singleton pattern for Supabase client instance
+- Reuse client across requests
+
+### Monitoring Metrics
+- Track average response time (target: < 200ms)
+- Monitor database insert latency
+- Track validation error rate
+- Monitor rate limit hit rate
+- Alert on error rate > 5%
+
+## 9. Implementation Steps
+
+### Step 1: Create Validation Utilities
+**File**: `src/lib/validation/flashcard-validation.ts`
+
+```typescript
+import {
+  CreateFlashcardCommand,
+  FlashcardConstraints
+} from '@/types';
+
+export class ValidationError extends Error {
+  constructor(
+    public field: string,
+    public constraint: string,
+    public details: Record<string, unknown>
+  ) {
+    super(`Validation failed for field: ${field}`);
+    this.name = 'ValidationError';
+  }
+}
+
+export function validateCreateFlashcardCommand(
+  command: unknown
+): asserts command is CreateFlashcardCommand {
+  if (!command || typeof command !== 'object') {
+    throw new ValidationError('body', 'required', {
+      message: 'Request body is required'
+    });
+  }
+
+  const cmd = command as Partial<CreateFlashcardCommand>;
+
+  // Validate front
+  if (!cmd.front || typeof cmd.front !== 'string') {
+    throw new ValidationError('front', 'required', {
+      message: 'Front text is required and must be a string'
+    });
+  }
+
+  const trimmedFront = cmd.front.trim();
+  if (trimmedFront.length === 0) {
+    throw new ValidationError('front', 'required', {
+      message: 'Front text cannot be empty or whitespace only'
+    });
+  }
+
+  if (cmd.front.length > FlashcardConstraints.FRONT_MAX_LENGTH) {
+    throw new ValidationError('front', 'max_length', {
+      max: FlashcardConstraints.FRONT_MAX_LENGTH,
+      actual: cmd.front.length
+    });
+  }
+
+  // Validate back
+  if (!cmd.back || typeof cmd.back !== 'string') {
+    throw new ValidationError('back', 'required', {
+      message: 'Back text is required and must be a string'
+    });
+  }
+
+  const trimmedBack = cmd.back.trim();
+  if (trimmedBack.length === 0) {
+    throw new ValidationError('back', 'required', {
+      message: 'Back text cannot be empty or whitespace only'
+    });
+  }
+
+  if (cmd.back.length > FlashcardConstraints.BACK_MAX_LENGTH) {
+    throw new ValidationError('back', 'max_length', {
+      max: FlashcardConstraints.BACK_MAX_LENGTH,
+      actual: cmd.back.length
+    });
+  }
+}
+```
+
+### Step 2: Create Flashcard Service
+**File**: `src/services/flashcard-service.ts`
+
+```typescript
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@/db/database.types';
+import type { CreateFlashcardCommand, FlashcardDTO } from '@/types';
+import DOMPurify from 'isomorphic-dompurify';
+
+export class FlashcardService {
+  private supabase: ReturnType<typeof createClient<Database>>;
+
+  constructor(accessToken: string) {
+    this.supabase = createClient<Database>(
+      import.meta.env.SUPABASE_URL,
+      import.meta.env.SUPABASE_ANON_KEY,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          }
+        }
+      }
+    );
+  }
+
+  async createManualFlashcard(
+    command: CreateFlashcardCommand,
+    userId: string
+  ): Promise<FlashcardDTO> {
+    // Sanitize input to prevent XSS
+    const sanitizedFront = DOMPurify.sanitize(command.front, {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: []
+    });
+
+    const sanitizedBack = DOMPurify.sanitize(command.back, {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: []
+    });
+
+    // Insert flashcard
+    const { data, error } = await this.supabase
+      .from('flashcards')
+      .insert({
+        front: sanitizedFront,
+        back: sanitizedBack,
+        source: 'manual',
+        generation_id: null,
+        user_id: userId
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Database error creating flashcard:', error);
+      throw new Error('Failed to create flashcard');
+    }
+
+    return data as FlashcardDTO;
+  }
+}
+```
+
+### Step 3: Create Authentication Middleware
+**File**: `src/middleware/auth.ts`
+
+```typescript
+import type { MiddlewareHandler } from 'astro';
+import { createClient } from '@supabase/supabase-js';
+
+export class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthenticationError';
+  }
+}
+
+export const authMiddleware: MiddlewareHandler = async (
+  { request, locals },
+  next
+) => {
+  const authHeader = request.headers.get('Authorization');
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new AuthenticationError('Missing authorization header');
+  }
+
+  const token = authHeader.substring(7);
+
+  const supabase = createClient(
+    import.meta.env.SUPABASE_URL,
+    import.meta.env.SUPABASE_ANON_KEY
+  );
+
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+
+  if (error || !user) {
+    throw new AuthenticationError('Invalid or expired authentication token');
+  }
+
+  // Store user info in locals for use in endpoint
+  locals.userId = user.id;
+  locals.accessToken = token;
+
+  return next();
+};
+```
+
+### Step 4: Create Rate Limiting Middleware
+**File**: `src/middleware/rate-limit.ts`
+
+```typescript
+import type { MiddlewareHandler } from 'astro';
+import { RateLimitConstraints } from '@/types';
+
+export class RateLimitError extends Error {
+  constructor(
+    public resetTime: number
+  ) {
+    super('Rate limit exceeded');
+    this.name = 'RateLimitError';
+  }
+}
+
+// Simple in-memory store (use Redis in production)
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+export const rateLimitMiddleware: MiddlewareHandler = async (
+  { request, locals },
+  next
+) => {
+  const userId = locals.userId;
+  if (!userId) {
+    return next(); // Auth middleware will handle this
+  }
+
+  const now = Date.now();
+  const key = `rate_limit:${userId}`;
+  const limit = RateLimitConstraints.REQUESTS_PER_MINUTE;
+  const windowMs = 60000; // 1 minute
+
+  let userLimit = rateLimitStore.get(key);
+
+  if (!userLimit || now > userLimit.resetAt) {
+    userLimit = {
+      count: 0,
+      resetAt: now + windowMs
+    };
+  }
+
+  userLimit.count++;
+  rateLimitStore.set(key, userLimit);
+
+  if (userLimit.count > limit) {
+    throw new RateLimitError(userLimit.resetAt);
+  }
+
+  const response = await next();
+
+  // Add rate limit headers
+  response.headers.set('X-RateLimit-Limit', limit.toString());
+  response.headers.set('X-RateLimit-Remaining', (limit - userLimit.count).toString());
+  response.headers.set('X-RateLimit-Reset', Math.floor(userLimit.resetAt / 1000).toString());
+
+  return response;
+};
+```
+
+### Step 5: Create API Endpoint
+**File**: `src/pages/api/flashcards.ts`
+
+```typescript
+import type { APIRoute } from 'astro';
+import { validateCreateFlashcardCommand, ValidationError } from '@/lib/validation/flashcard-validation';
+import { FlashcardService } from '@/services/flashcard-service';
+import { AuthenticationError } from '@/middleware/auth';
+import { RateLimitError } from '@/middleware/rate-limit';
+import type { ApiErrorResponse } from '@/types';
+
+function buildErrorResponse(
+  code: string,
+  message: string,
+  details?: Record<string, unknown>
+): ApiErrorResponse {
+  return {
+    error: {
+      code: code as any,
+      message,
+      details
+    }
+  };
+}
+
+export const POST: APIRoute = async ({ request, locals }) => {
+  try {
+    // Parse request body
+    const body = await request.json();
+
+    // Validate command
+    validateCreateFlashcardCommand(body);
+
+    // Get user context from middleware
+    const userId = locals.userId as string;
+    const accessToken = locals.accessToken as string;
+
+    // Create flashcard
+    const flashcardService = new FlashcardService(accessToken);
+    const flashcard = await flashcardService.createManualFlashcard(body, userId);
+
+    return new Response(JSON.stringify(flashcard), {
+      status: 201,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+  } catch (error) {
+    // Handle validation errors
+    if (error instanceof ValidationError) {
+      return new Response(
+        JSON.stringify(buildErrorResponse(
+          'VALIDATION_ERROR',
+          error.message,
+          error.details
+        )),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Handle authentication errors
+    if (error instanceof AuthenticationError) {
+      return new Response(
+        JSON.stringify(buildErrorResponse(
+          'UNAUTHORIZED',
+          error.message
+        )),
+        {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Handle rate limit errors
+    if (error instanceof RateLimitError) {
+      return new Response(
+        JSON.stringify(buildErrorResponse(
+          'RATE_LIMIT_EXCEEDED',
+          'Rate limit exceeded. Maximum 100 requests per minute allowed'
+        )),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-RateLimit-Reset': Math.floor(error.resetTime / 1000).toString()
+          }
+        }
+      );
+    }
+
+    // Handle JSON parse errors
+    if (error instanceof SyntaxError) {
+      return new Response(
+        JSON.stringify(buildErrorResponse(
+          'VALIDATION_ERROR',
+          'Invalid JSON in request body'
+        )),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Log unexpected errors
+    console.error('Unexpected error in POST /api/flashcards:', error);
+
+    return new Response(
+      JSON.stringify(buildErrorResponse(
+        'INTERNAL_ERROR',
+        'An unexpected error occurred while creating flashcard'
+      )),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+};
+```
+
+### Step 6: Configure Middleware in Astro
+**File**: `src/middleware/index.ts`
+
+```typescript
+import { sequence } from 'astro:middleware';
+import { authMiddleware } from './auth';
+import { rateLimitMiddleware } from './rate-limit';
+
+export const onRequest = sequence(
+  authMiddleware,
+  rateLimitMiddleware
+);
+```
+
+### Step 7: Add Environment Variables
+**File**: `.env`
+
+```bash
+# Supabase Configuration
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+
+# Frontend URL for CORS
+PUBLIC_FRONTEND_URL=http://localhost:4321
+```
+
+### Step 8: Create Unit Tests
+**File**: `src/lib/validation/__tests__/flashcard-validation.test.ts`
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { validateCreateFlashcardCommand, ValidationError } from '../flashcard-validation';
+import { FlashcardConstraints } from '@/types';
+
+describe('validateCreateFlashcardCommand', () => {
+  it('should pass validation for valid command', () => {
+    const command = {
+      front: 'What is TypeScript?',
+      back: 'A typed superset of JavaScript'
+    };
+
+    expect(() => validateCreateFlashcardCommand(command)).not.toThrow();
+  });
+
+  it('should throw error for missing front', () => {
+    const command = {
+      back: 'Answer'
+    };
+
+    expect(() => validateCreateFlashcardCommand(command))
+      .toThrow(ValidationError);
+  });
+
+  it('should throw error for front exceeding max length', () => {
+    const command = {
+      front: 'x'.repeat(FlashcardConstraints.FRONT_MAX_LENGTH + 1),
+      back: 'Answer'
+    };
+
+    expect(() => validateCreateFlashcardCommand(command))
+      .toThrow(ValidationError);
+  });
+
+  it('should throw error for empty front after trim', () => {
+    const command = {
+      front: '   ',
+      back: 'Answer'
+    };
+
+    expect(() => validateCreateFlashcardCommand(command))
+      .toThrow(ValidationError);
+  });
+});
+```
+
+### Step 9: Integration Testing
+**File**: `tests/api/flashcards.test.ts`
+
+```typescript
+import { describe, it, expect, beforeAll } from 'vitest';
+
+describe('POST /api/flashcards', () => {
+  let accessToken: string;
+
+  beforeAll(async () => {
+    // Get access token from test user
+    const authResponse = await fetch('http://localhost:4321/auth/v1/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'test@example.com',
+        password: 'testpassword'
+      })
+    });
+
+    const authData = await authResponse.json();
+    accessToken = authData.access_token;
+  });
+
+  it('should create flashcard with valid data', async () => {
+    const response = await fetch('http://localhost:4321/api/flashcards', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        front: 'Test question?',
+        back: 'Test answer'
+      })
+    });
+
+    expect(response.status).toBe(201);
+
+    const data = await response.json();
+    expect(data.front).toBe('Test question?');
+    expect(data.back).toBe('Test answer');
+    expect(data.source).toBe('manual');
+    expect(data.generation_id).toBeNull();
+  });
+
+  it('should return 401 without auth token', async () => {
+    const response = await fetch('http://localhost:4321/api/flashcards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        front: 'Question',
+        back: 'Answer'
+      })
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('should return 400 for invalid data', async () => {
+    const response = await fetch('http://localhost:4321/api/flashcards', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        front: 'x'.repeat(201), // Exceeds max length
+        back: 'Answer'
+      })
+    });
+
+    expect(response.status).toBe(400);
+
+    const error = await response.json();
+    expect(error.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+```
+
+### Step 10: Documentation
+- Update API documentation with request/response examples
+- Document error codes and their meanings
+- Add usage examples for frontend developers
+- Document rate limiting behavior
+
+## 10. Testing Checklist
+
+- [ ] Unit tests for validation functions
+- [ ] Unit tests for service methods
+- [ ] Integration tests for endpoint
+- [ ] Test authentication with valid token
+- [ ] Test authentication with invalid token
+- [ ] Test authentication with expired token
+- [ ] Test validation for missing fields
+- [ ] Test validation for exceeding max lengths
+- [ ] Test validation for empty strings
+- [ ] Test rate limiting (exceed 100 req/min)
+- [ ] Test XSS prevention with HTML input
+- [ ] Test database constraint validation
+- [ ] Test RLS policy enforcement
+- [ ] Load testing (target: 100 req/s)
+- [ ] Monitor response times (target: < 200ms)
+
+## 11. Deployment Considerations
+
+### Environment Variables
+Ensure all environment variables are set in production:
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `PUBLIC_FRONTEND_URL`
+
+### Database Migrations
+Verify that database schema is up to date with:
+- flashcards table structure
+- RLS policies enabled
+- Indexes created
+- Trigger for updated_at
+
+### Monitoring Setup
+- Configure error tracking (e.g., Sentry)
+- Set up performance monitoring
+- Configure rate limit alerts
+- Set up database query monitoring
+
+### CORS Configuration
+Update CORS headers for production frontend domain
+
+### Rate Limiting
+Consider using Redis for distributed rate limiting in production (replace in-memory store)

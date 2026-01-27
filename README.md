@@ -137,6 +137,9 @@ npm run preview
 | `npm run lint`     | Run ESLint to check code quality             |
 | `npm run lint:fix` | Automatically fix ESLint issues              |
 | `npm run format`   | Format code with Prettier                    |
+| `npm run test`     | Run tests in watch mode                      |
+| `npm run test:ui`  | Run tests with Vitest UI                     |
+| `npm run test:run` | Run all tests once                           |
 
 ## Project Scope
 
