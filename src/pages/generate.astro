@@ -1,0 +1,28 @@
+---
+/**
+ * Generate Flashcards Page
+ * Main view for AI-powered flashcard generation
+ *
+ * Requirements:
+ * - User must be authenticated (redirects to /login if not)
+ * - Allows pasting text and generating flashcard proposals
+ * - User can review, edit, accept or reject proposals
+ * - Saves accepted flashcards in batch to database
+ */
+
+import Layout from "@/layouts/Layout.astro";
+import { GenerateFlashcardsView } from "@/components/generate/GenerateFlashcardsView";
+
+// TODO: Add authentication check here
+// For now, assuming user is authenticated
+// In production, check for session/JWT token and redirect if not authenticated
+// Example:
+// const token = Astro.cookies.get("access_token");
+// if (!token) {
+//   return Astro.redirect("/login?redirect=/generate");
+// }
+---
+
+<Layout title="Generuj fiszki - 10x Cards">
+  <GenerateFlashcardsView client:load />
+</Layout>

@@ -371,3 +371,16 @@ export const PaginationConstraints = {
   STUDY_SESSION_DEFAULT_LIMIT: 20,
   STUDY_SESSION_MAX_LIMIT: 50,
 } as const;
+
+// =============================================================================
+// Generate View ViewModel Types (UI-specific)
+// =============================================================================
+
+export type {
+  FlashcardActionType,
+  FlashcardProposalState,
+  GenerateViewState,
+  TextInputValidation,
+  FlashcardValidationErrors,
+  FlashcardValidationResult,
+} from "./types/generate-view";

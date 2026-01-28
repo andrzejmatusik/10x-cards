@@ -32,7 +32,16 @@ export const authMiddleware: MiddlewareHandler = async (context, next) => {
   // Extract Authorization header
   const authHeader = context.request.headers.get("Authorization");
 
+  // Development mode: Allow requests without auth and use mock user
+  const isDevelopment = import.meta.env.DEV || import.meta.env.MODE === "development";
+
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (isDevelopment) {
+      // Use mock user ID in development
+      context.locals.userId = "mock-user-id-dev-mode";
+      context.locals.userEmail = "dev@example.com";
+      return next();
+    }
     throw new AuthenticationError("Missing authorization header");
   }
 
