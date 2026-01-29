@@ -163,9 +163,14 @@ export function useGenerateFlashcards(): UseGenerateFlashcardsReturn {
       if (proposal.action === "accepted") {
         proposal.action = "pending";
       } else {
+        // Check if it was edited before changing action
+        const wasEdited = proposal.action === "edited";
         proposal.action = "accepted";
-        // Ensure current matches original when accepting without edit
-        proposal.current = { ...proposal.original };
+
+        // Only reset to original if not edited - preserve edited content
+        if (!wasEdited) {
+          proposal.current = { ...proposal.original };
+        }
       }
 
       return { ...prev, proposals };

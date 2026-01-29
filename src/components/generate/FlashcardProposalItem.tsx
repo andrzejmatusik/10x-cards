@@ -70,14 +70,9 @@ export function FlashcardProposalItem({ proposal, onAccept, onEdit, onReject }: 
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
-          <Button
-            size="sm"
-            variant={isAccepted || isEdited ? "default" : "outline"}
-            onClick={onAccept}
-            disabled={isRejected}
-          >
+          <Button size="sm" variant={isAccepted ? "default" : "outline"} onClick={onAccept} disabled={isRejected}>
             <Check className="h-4 w-4 mr-1" />
-            {isAccepted || isEdited ? "Zaakceptowano" : "Akceptuj"}
+            {isAccepted ? "Zaakceptowano" : "Akceptuj"}
           </Button>
 
           <Button size="sm" variant="outline" onClick={onEdit} disabled={isRejected}>
