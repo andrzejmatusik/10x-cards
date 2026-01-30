@@ -12,6 +12,7 @@ import { GeneratedFlashcardsList } from "./GeneratedFlashcardsList";
 import { FlashcardEditModal } from "./FlashcardEditModal";
 import { ActionButtons } from "./ActionButtons";
 import { Toaster } from "@/components/ui/toaster";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function GenerateFlashcardsView() {
   const {
@@ -102,6 +103,11 @@ export function GenerateFlashcardsView() {
 
   return (
     <>
+      {/* Theme Toggle - Top Right */}
+      <div className="fixed top-4 right-4 z-50">
+        <ThemeToggle />
+      </div>
+
       <div className="container mx-auto max-w-6xl px-4 py-8 space-y-8">
         {/* Text Input Section */}
         <TextInputSection

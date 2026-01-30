@@ -1,8 +1,14 @@
 ---
 import { AuthPanel } from "@/components/auth/AuthPanel";
+import { ThemeToggle } from "@/components/ThemeToggle";
 ---
 
 <div class="relative w-full mx-auto min-h-screen flex items-center justify-center p-4 sm:p-8">
+  {/* Theme Toggle - Top Right */}
+  <div class="fixed top-4 right-4 z-50">
+    <ThemeToggle client:load />
+  </div>
+
   <div class="w-full max-w-6xl mx-auto">
     {/* Header Section */}
     <div class="text-center mb-12 space-y-3">

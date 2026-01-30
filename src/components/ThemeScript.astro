@@ -1,0 +1,29 @@
+---
+/**
+ * Theme initialization script
+ * Runs before page render to prevent flash of wrong theme
+ * Must be included in <head> of Layout
+ */
+---
+
+<!-- eslint-disable -->
+<script is:inline>
+  // Run immediately to prevent flash
+  (function () {
+    const getInitialTheme = () => {
+      const stored = localStorage.getItem("theme");
+      if (stored === "dark" || stored === "light") {
+        return stored;
+      }
+      // Check system preference
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    };
+
+    const theme = getInitialTheme();
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  })();
+</script>
