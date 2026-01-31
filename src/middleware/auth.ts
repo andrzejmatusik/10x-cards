@@ -37,8 +37,8 @@ export const authMiddleware: MiddlewareHandler = async (context, next) => {
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     if (isDevelopment) {
-      // Use mock user ID in development
-      context.locals.userId = "mock-user-id-dev-mode";
+      // Use mock user ID in development (valid UUID format)
+      context.locals.userId = "00000000-0000-0000-0000-000000000000";
       context.locals.userEmail = "dev@example.com";
       return next();
     }

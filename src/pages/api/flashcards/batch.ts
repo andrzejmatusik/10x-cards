@@ -8,6 +8,7 @@ import type { CreateBatchFlashcardsCommand, CreateBatchFlashcardsResponse, Flash
 import { validationError, unauthorizedError, internalError } from "@/lib/api/error-builder";
 import { AuthenticationError } from "@/middleware/auth";
 import { RateLimitError } from "@/middleware/rate-limit";
+import { supabaseServerClient } from "@/db/supabase.server.client";
 
 /**
  * POST /api/flashcards/batch
@@ -99,20 +100,51 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return unauthorizedError("User not authenticated");
     }
 
-    // TODO: Verify generation belongs to user and exists
-    // For now, mock verification passes
+    // Verify generation belongs to user and exists
+    const { data: generation, error: generationError } = await supabaseServerClient
+      .from("generations")
+      .select("id, user_id")
+      .eq("id", generation_id)
+      .eq("user_id", userId)
+      .single();
 
-    // TODO: Insert flashcards into database
-    // For now, return mock response
-    const createdFlashcards: FlashcardDTO[] = flashcards.map((flashcard, index) => ({
-      id: Math.floor(Math.random() * 1000000) + index,
+    if (generationError || !generation) {
+      return validationError("Generation not found or does not belong to you", {
+        field: "generation_id",
+        code: "NOT_FOUND",
+      });
+    }
+
+    // Insert flashcards into database
+    const flashcardsToInsert = flashcards.map((flashcard) => ({
       front: flashcard.front,
       back: flashcard.back,
       source: flashcard.source,
       generation_id: generation_id,
       user_id: userId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    }));
+
+    const { data: insertedFlashcards, error: insertError } = await supabaseServerClient
+      .from("flashcards")
+      .insert(flashcardsToInsert)
+      .select();
+
+    if (insertError || !insertedFlashcards) {
+      // eslint-disable-next-line no-console
+      console.error("Error inserting flashcards:", insertError);
+      return internalError("Failed to save flashcards to database");
+    }
+
+    // Transform database records to DTOs
+    const createdFlashcards: FlashcardDTO[] = insertedFlashcards.map((flashcard) => ({
+      id: flashcard.id,
+      front: flashcard.front,
+      back: flashcard.back,
+      source: flashcard.source,
+      generation_id: flashcard.generation_id,
+      user_id: flashcard.user_id,
+      created_at: flashcard.created_at,
+      updated_at: flashcard.updated_at,
     }));
 
     const response: CreateBatchFlashcardsResponse = {

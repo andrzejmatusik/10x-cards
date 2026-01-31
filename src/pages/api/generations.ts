@@ -8,6 +8,8 @@ import type { CreateGenerationCommand, CreateGenerationResponse } from "@/types"
 import { validationError, unauthorizedError, rateLimitError, internalError } from "@/lib/api/error-builder";
 import { AuthenticationError } from "@/middleware/auth";
 import { RateLimitError } from "@/middleware/rate-limit";
+import { supabaseServerClient } from "@/db/supabase.server.client";
+import { createHash } from "crypto";
 
 /**
  * POST /api/generations
@@ -84,7 +86,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     // TODO: Implement actual LLM generation
-    // For now, return mock response
+    // For now, return mock flashcards
     const startTime = Date.now();
 
     // Mock: Generate 5 flashcards
@@ -114,19 +116,42 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const endTime = Date.now();
     const duration = endTime - startTime;
 
-    // Create mock generation response
+    // Create hash of source text
+    const sourceTextHash = createHash("sha256").update(source_text).digest("hex");
+
+    // Insert generation into database
+    const { data: generation, error: insertError } = await supabaseServerClient
+      .from("generations")
+      .insert({
+        user_id: userId,
+        model,
+        generated_count: proposedFlashcards.length,
+        source_text_hash: sourceTextHash,
+        source_text_length: source_text.length,
+        generation_duration: duration,
+      })
+      .select()
+      .single();
+
+    if (insertError || !generation) {
+      // eslint-disable-next-line no-console
+      console.error("Error inserting generation:", insertError);
+      return internalError("Failed to save generation to database");
+    }
+
+    // Create response with database record
     const response: CreateGenerationResponse = {
-      id: Math.floor(Math.random() * 1000000),
-      user_id: userId,
-      model,
-      generated_count: proposedFlashcards.length,
-      accepted_unedited_count: null,
-      accepted_edited_count: null,
-      source_text_hash: "mock_hash_" + Date.now(),
-      source_text_length: source_text.length,
-      generation_duration: duration,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      id: generation.id,
+      user_id: generation.user_id,
+      model: generation.model,
+      generated_count: generation.generated_count,
+      accepted_unedited_count: generation.accepted_unedited_count,
+      accepted_edited_count: generation.accepted_edited_count,
+      source_text_hash: generation.source_text_hash,
+      source_text_length: generation.source_text_length,
+      generation_duration: generation.generation_duration,
+      created_at: generation.created_at,
+      updated_at: generation.updated_at,
       proposed_flashcards: proposedFlashcards,
     };
 

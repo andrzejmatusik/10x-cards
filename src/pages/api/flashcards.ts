@@ -10,6 +10,7 @@ import { validateCreateFlashcardCommand, ValidationError } from "@/lib/validatio
 import { AuthenticationError } from "@/middleware/auth";
 import { RateLimitError } from "@/middleware/rate-limit";
 import { FlashcardService } from "@/services/flashcard-service";
+import { supabaseServerClient } from "@/db/supabase.server.client";
 
 /**
  * POST /api/flashcards
@@ -70,7 +71,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     // Create flashcard using service
-    const flashcardService = new FlashcardService(locals.supabase);
+    const flashcardService = new FlashcardService(supabaseServerClient);
     const flashcard = await flashcardService.createManualFlashcard(validatedCommand, userId);
 
     // Return created flashcard with 201 status
