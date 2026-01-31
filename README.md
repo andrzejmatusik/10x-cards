@@ -112,7 +112,7 @@ OPENROUTER_API_KEY=your_openrouter_api_key
 npm run dev
 ```
 
-The application should now be running at `http://localhost:3000`
+The application should now be running at `http://localhost:3000` or `http://localhost:3001`
 
 6. Build for production:
 
