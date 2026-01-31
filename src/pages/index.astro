@@ -1,8 +1,20 @@
 ---
+/**
+ * Landing Page
+ * - Pokazuje AuthPanel dla niezalogowanych użytkowników
+ * - Przekierowuje zalogowanych użytkowników na /generate
+ */
+
 import Welcome from "../components/Welcome.astro";
 import Layout from "../layouts/Layout.astro";
+import { isUserAuthenticated } from "@/lib/auth/server-auth";
+
+// Jeśli użytkownik jest zalogowany, przekieruj na /generate
+if (await isUserAuthenticated(Astro)) {
+  return Astro.redirect('/generate');
+}
 ---
 
-<Layout title="10x-cards">
+<Layout title="10x-cards - AI-powered flashcards">
   <Welcome />
 </Layout>

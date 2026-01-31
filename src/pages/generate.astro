@@ -1,6 +1,6 @@
 ---
 /**
- * Generate Flashcards Page
+ * Generate Flashcards Page (PROTECTED)
  * Main view for AI-powered flashcard generation
  *
  * Requirements:
@@ -12,17 +12,16 @@
 
 import Layout from "@/layouts/Layout.astro";
 import { GenerateFlashcardsView } from "@/components/generate/GenerateFlashcardsView";
+import { TopNavBar } from "@/components/TopNavBar";
+import { requireAuth } from "@/lib/auth/server-auth";
 
-// TODO: Add authentication check here
-// For now, assuming user is authenticated
-// In production, check for session/JWT token and redirect if not authenticated
-// Example:
-// const token = Astro.cookies.get("access_token");
-// if (!token) {
-//   return Astro.redirect("/login?redirect=/generate");
-// }
+// Wymaga autentykacji - automatyczne przekierowanie na /login jeśli brak sesji
+const user = await requireAuth(Astro);
 ---
 
 <Layout title="Generuj fiszki - 10x Cards">
-  <GenerateFlashcardsView client:load />
+  <TopNavBar client:load />
+  <div class="pt-16">
+    <GenerateFlashcardsView client:load />
+  </div>
 </Layout>
