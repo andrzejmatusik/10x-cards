@@ -45,7 +45,7 @@ Creating high-quality flashcards manually requires significant time and effort, 
   - RESTful API with SDKs
   - Open-source and self-hostable
 
-### AI Integration
+### AI Integration (optional)
 
 - **[Openrouter.ai](https://openrouter.ai/)** - Unified API for accessing multiple LLM models with:
   - Access to diverse models for cost-effective solutions
