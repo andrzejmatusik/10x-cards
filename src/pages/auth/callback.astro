@@ -15,43 +15,41 @@
  * - signup: Email verification (przyszłość) → /generate
  */
 
-const supabase = Astro.locals.supabase;
-
 // Pobierz hash z URL (Supabase używa hash routing #access_token=...)
 // W Astro musimy przekierować do client-side script, który odczyta hash
 ---
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <title>Przekierowywanie...</title>
-    <script>
+    <script is:inline>
       // Client-side handling hash params (Supabase używa hash routing)
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
 
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      const type = params.get('type');
-      const error = params.get('error');
-      const errorDescription = params.get('error_description');
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      const type = params.get("type");
+      const error = params.get("error");
+      const errorDescription = params.get("error_description");
 
       if (error) {
-        console.error('Auth callback error:', error, errorDescription);
+        console.error("Auth callback error:", error, errorDescription);
 
-        if (error === 'access_denied') {
-          window.location.href = '/login?error=link_expired';
+        if (error === "access_denied") {
+          window.location.href = "/login?error=link_expired";
         } else {
-          window.location.href = '/login?error=auth_callback_failed';
+          window.location.href = "/login?error=auth_callback_failed";
         }
       } else if (accessToken && refreshToken) {
         // Mamy tokeny - ustaw session przez API
-        fetch('/api/auth/set-session', {
-          method: 'POST',
+        fetch("/api/auth/set-session", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             access_token: accessToken,
@@ -59,34 +57,34 @@ const supabase = Astro.locals.supabase;
           }),
         })
           .then((res) => {
-            if (!res.ok) throw new Error('Failed to set session');
+            if (!res.ok) throw new Error("Failed to set session");
             return res.json();
           })
           .then(() => {
             // Zapisz do localStorage
-            localStorage.setItem('access_token', accessToken);
-            localStorage.setItem('refresh_token', refreshToken);
+            localStorage.setItem("access_token", accessToken);
+            localStorage.setItem("refresh_token", refreshToken);
 
             // Przekieruj w zależności od typu
-            if (type === 'recovery') {
+            if (type === "recovery") {
               // Password reset - przekieruj do formularza zmiany hasła
-              window.location.href = '/reset-password';
-            } else if (type === 'signup') {
+              window.location.href = "/reset-password";
+            } else if (type === "signup") {
               // Email verification (przyszłość - obecnie wyłączone w MVP)
-              window.location.href = '/generate?verified=true';
+              window.location.href = "/generate?verified=true";
             } else {
               // Default redirect
-              window.location.href = '/generate';
+              window.location.href = "/generate";
             }
           })
           .catch((error) => {
-            console.error('Error setting session:', error);
-            window.location.href = '/login?error=auth_callback_failed';
+            console.error("Error setting session:", error);
+            window.location.href = "/login?error=auth_callback_failed";
           });
       } else {
         // Brak tokenów - nieprawidłowy callback
-        console.error('No tokens in callback');
-        window.location.href = '/login?error=invalid_callback';
+        console.error("No tokens in callback");
+        window.location.href = "/login?error=invalid_callback";
       }
     </script>
   </head>

@@ -59,7 +59,7 @@ const reactConfig = tseslint.config({
 export default tseslint.config(
   includeIgnoreFile(gitignorePath),
   {
-    ignores: ["src/components/ThemeScript.astro"],
+    ignores: ["src/components/ThemeScript.astro", "src/pages/auth/callback.astro", "src/pages/reset-password.astro"],
   },
   baseConfig,
   jsxA11yConfig,

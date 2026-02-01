@@ -11,7 +11,7 @@ import { isUserAuthenticated } from "@/lib/auth/server-auth";
 
 // Jeśli użytkownik jest zalogowany, przekieruj na /generate
 if (await isUserAuthenticated(Astro)) {
-  return Astro.redirect('/generate');
+  return Astro.redirect("/generate");
 }
 ---
 

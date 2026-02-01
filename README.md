@@ -152,9 +152,6 @@ npm run preview
 
 2. **Manual Flashcard Management**
    - Create flashcards manually (front and back)
-   - Edit existing flashcards
-   - Delete unwanted flashcards
-   - View all flashcards in "My Flashcards" section
 
 3. **User Authentication & Accounts**
    - User registration and login
