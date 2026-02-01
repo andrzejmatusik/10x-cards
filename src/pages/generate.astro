@@ -16,7 +16,7 @@ import { TopNavBar } from "@/components/TopNavBar";
 import { requireAuth } from "@/lib/auth/server-auth";
 
 // Wymaga autentykacji - automatyczne przekierowanie na /login jeśli brak sesji
-const user = await requireAuth(Astro);
+await requireAuth(Astro);
 ---
 
 <Layout title="Generuj fiszki - 10x Cards">
